@@ -82,7 +82,7 @@
 
 -- s2 : Если не существует x : Nat такого, что верно P(x), то P(3) не верно.
 
-\func s2 (P : Nat -> \Type) (h : \Sigma (x : Nat) (P x) -> Empty) : P 3 -> Empty => \lam p => h (3, p)
+\func s2 (P : Nat -> \Type) (h : Not (\Sigma (x : Nat) (P x))) : Not (P 3) => \lam p => h (3, p)
 
 -- 8. Сформулируйте и докажите следующие утверждения.
 
@@ -96,7 +96,7 @@
 
 -- s4 : Если для всех x : Nat либо не верно P(x), либо не верно Q(x), то P(3) влечет, что Q(3) не верно.
 
-\func s4 (P Q : Nat -> \Type) (f : \Pi (x : Nat) -> Either (P x -> Empty) (Q x -> Empty)) (p : P 3): Q 3 -> Empty =>
+\func s4 (P Q : Nat -> \Type) (f : \Pi (x : Nat) -> Either (Not (P x)) (Not (Q x))) (p : P 3): Not (Q 3) =>
   \lam q => \case f 3 \with {
     | inl a => a p
     | inr b => b q
