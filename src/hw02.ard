@@ -9,6 +9,12 @@
 
 -- 2. Реализуйте любой (but choose wisely) алгоритм сортировки. Функцию сравнения можно принимать в качестве аргумента.
 
+\func \infix 4 < (x y : Nat) : Bool
+  | 0, 0 => false
+  | 0, suc y => true
+  | suc x, 0 => false
+  | suc x, suc y => x < y
+
 \func sort {A : \Type} (xs : List A) (< : A -> A -> Bool): List A => aux xs nil <
   \where {
     \func aux {A : \Type} (xs out : List A) (< : A -> A -> Bool): List A \elim xs
@@ -17,7 +23,7 @@
 
     \func insert {A : \Type} (x : A) (out : List A) (< : A -> A -> Bool): List A \elim out
       | nil => x :: nil
-      | :: a out => a :: if (< a x) (x :: out) (insert x out <)
+      | :: a out => if (< x a) (x :: a :: out) (a :: insert x out <)
   }
 
 -- 3. Докажите ассоциативность && и ||.
