@@ -1,13 +1,24 @@
+\import Function.Meta
+\import Paths.Meta
 \import Utils
-\open Nat(+,*)
+\import lect03
+\open Nat (+, *, -)
 
 -- 1. Чему равно fileTest (в нормальной форме)? Докажите это.
 
+\import lect03 (fileTest, M5)
+
+\func fileTestNormal : fileTest = (17, 8, 13, 55, 18, 21) => idp
+
 -- 2. Чему равно M5.t''' (в нормальной форме)? Докажите это.
+
+\func M5t'''Normal : M5.t''' = ((82, 42, 61, 82, 34, 42, 61, 29), 25, (42, 29)) => idp
 
 -- 3. Докажите ассоциативность ++.
 
-\func ++-assoc {A : \Type} (xs ys zs : List A) : (xs ++ ys) ++ zs = xs ++ (ys ++ zs) => {?}
+\func ++-assoc {A : \Type} (xs ys zs : List A) : (xs ++ ys) ++ zs = xs ++ (ys ++ zs) \elim xs
+  | nil => idp
+  | :: a xs => pmap (a ::) (++-assoc xs ys zs)
 
 -- 4. Докажите, что reverse (reverse xs) = xs, где reverse определен через ++.
 
@@ -16,28 +27,81 @@
   | :: x xs => reverse xs ++ x :: nil
 
 -- Это утверждение будет полезно для доказательства.
-\func reverse++ {A : \Type} (xs ys : List A) : reverse (xs ++ ys) = reverse ys ++ reverse xs => {?}
 
-\func reverse-isInvolutive {A : \Type} (xs : List A) : reverse (reverse xs) = xs => {?}
+\func ++-nil {A : \Type} (xs : List A) : (xs ++ nil) = xs \elim xs
+  | nil => idp
+  | :: a xs => pmap (a ::) (++-nil xs)
+
+\func reverse++ {A : \Type} (xs ys : List A) : reverse (xs ++ ys) = reverse ys ++ reverse xs \elim xs
+  | nil => sym $ ++-nil (reverse ys)
+  | :: a xs => rewrite (reverse++ xs ys) $ ++-assoc (reverse ys) (reverse xs) (a :: nil)
+
+\func reverse-isInvolutive {A : \Type} (xs : List A) : reverse (reverse xs) = xs \elim xs
+  | nil => idp
+  | :: a xs => rewrite (reverse++ (reverse xs) (a :: nil)) $ pmap (a ::) (reverse-isInvolutive xs)
 
 -- 5. Докажите дистрибутивность умножения над сложением для натуральных чисел.
 
-\func rdistr (n m k : Nat) : (m + k) * n = m * n + k * n => {?}
+\func rdistr (n m k : Nat) : (m + k) * n = m * n + k * n \elim n
+  | 0 => idp
+  | suc n =>
+    rewrite (rdistr n m k) $
+    rewrite (+-assoc (m * n) (k * n) (m + k)) $
+    rewrite (+-assoc (m * n) m (k * n + k)) $
+    rewrite (+-comm (k * n) (m + k)) $
+    rewrite (+-comm (k * n) k) $
+    rewrite (+-assoc m k (k * n)) $
+    idp
 
-\func ldistr (n m k : Nat) : n * (m + k) = n * m + n * k => {?}
+\func *-comm-helper (n m : Nat) : m * n + n = suc m * n \elim n
+  | 0 => idp
+  | suc n =>
+    rewrite (+-assoc (m * n) m n) $
+    rewrite (+-comm m n) $
+    rewriteI (+-assoc (m * n) n m) $
+    rewrite (*-comm-helper n m) $
+    idp
+
+\func *-comm (n m : Nat) : n * m = m * n
+  | 0, 0 => idp
+  | suc n, 0 => rewriteI (*-comm n 0) idp
+  | n, suc m => rewrite (*-comm n m) $ *-comm-helper n m
+
+\func ldistr (n m k : Nat) : n * (m + k) = n * m + n * k =>
+  rewrite (*-comm n (m + k)) $
+  rewrite (*-comm n m) $
+  rewrite (*-comm n k) $
+  rdistr n m k
 
 -- 6. Определите конгруэнтность для функций двух аргументов через transport.
 --    Можно использовать любые функции, определенные через transport.
 
-\func pmap2 {A B C : \Type} (f : A -> B -> C) {a a' : A} (p : a = a') {b b' : B} (q : b = b') : f a b = f a' b' => {?}
+\func sigma-eq {A B : \Type} {a a' : A} {b b' : B} (p : a = a') (q : b = b') : (a, b) = (a', b') =>
+  rewrite p $
+  rewrite q $
+  idp
+
+\func sigma-unwrap {A B C : \Type} (f : A -> B -> C): \Sigma (f' : \Sigma A B -> C) (\Pi (a : A) (b : B) -> f a b = f' (a, b)) =>
+  (\lam (x, y) => f x y, \lam x y => idp)
+
+\func pmap2-helper {A B C : \Type} (f : \Sigma A B -> C) {a a' : A} (p : a = a') {b b' : B} (q : b = b') : f (a, b) = f (a', b') =>
+  pmap f (sigma-eq p q)
+
+\func pmap2 {A B C : \Type} (f : A -> B -> C) {a a' : A} (p : a = a') {b b' : B} (q : b = b') : f a b = f a' b' =>
+  \let
+    (f', s) => sigma-unwrap f
+  \in
+    rewrite (s a b) $
+    rewrite (s a' b') $
+    pmap2-helper f' p q
 
 -- 7. Докажите, что transport выражается через pmap и repl и наоборот.
 
 -- repl говорит, что если у нас есть два равных типа, то у нас есть функция из одного во второй.
 -- Определите repl через transport.
 
-\func repl {A B : \Type} (p : A = B) (a : A) : B => {?}
+\func repl {A B : \Type} (p : A = B) (a : A) : B => transport (\lam x => x) p a
 
--- Определите transport через repl и pmap.
+---- Определите transport через repl и pmap.
 
-\func transport' {A : \Type} (B : A -> \Type) {a a' : A} (p : a = a') (b : B a) : B a' => {?}
+\func transport' {A : \Type} (B : A -> \Type) {a a' : A} (p : a = a') (b : B a) : B a' => repl (pmap B p) b
