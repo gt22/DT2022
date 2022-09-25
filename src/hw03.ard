@@ -77,9 +77,8 @@
 --    Можно использовать любые функции, определенные через transport.
 
 \func sigma-eq {A B : \Type} {a a' : A} {b b' : B} (p : a = a') (q : b = b') : (a, b) = (a', b') =>
-  rewrite p $
-  rewrite q $
-  idp
+  transport (\lam x => (a, b) = (x, b')) p $
+  transport (\lam x => (a, b) = (a, x)) q idp
 
 \func sigma-unwrap {A B C : \Type} (f : A -> B -> C): \Sigma (f' : \Sigma A B -> C) (\Pi (a : A) (b : B) -> f a b = f' (a, b)) =>
   (\lam (x, y) => f x y, \lam x y => idp)
@@ -91,9 +90,10 @@
   \let
     (f', s) => sigma-unwrap f
   \in
-    rewrite (s a b) $
-    rewrite (s a' b') $
-    pmap2-helper f' p q
+    s a b *>
+    pmap2-helper f' p q *>
+    s a' b'
+
 
 -- 7. Докажите, что transport выражается через pmap и repl и наоборот.
 
