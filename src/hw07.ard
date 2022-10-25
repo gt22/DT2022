@@ -117,22 +117,22 @@
 
 \func isEven (n : Nat) => \Sigma (k : Nat) (n = 2 * k)
 
-\func isEven-dec : DecPred isEven => helper2
+\func isEven-dec : DecPred isEven => helper
   \where {
-    \func helper (a b : Nat) (p : 2 * a = suc (2 * b)) : Empty
-      | 0, 0, ()
-      | suc a, suc b, p => helper a b $ pmap (pred o pred) p
+    \func odd1 (p : isEven 1) : Empty
+      | (k, p) => \case \elim k, p \with {
+        | 0, ()
+        | suc n, ()
+      }
 
-    \func helper2 (n : Nat) : Decide (isEven n)
+    \func helper (n : Nat) : Decide (isEven n)
       | 0 => yes (0, idp)
-      | 1 => no (\lam p => \case p \with {
-        | (0, ()) | (suc n,())
-      })
-      | suc (suc n) => \case helper2 n \with {
+      | 1 => no odd1
+      | suc (suc n) => \case helper n \with {
         | yes (k, p) => yes (suc k, pmap (suc o suc) p)
         | no q => no \lam p => \case p \with {
-          | (0, p') => \case p'
-          | (suc k',p') => q (k', pmap (pred o pred) p')
+          | (suc k', p') => q (k', pmap (pred o pred) p')
+          | (0, ())
         }
       }
   }
@@ -141,11 +141,11 @@
 
 \func head {A : \Type} (fallback : A) (xs : List A) : A \elim xs
   | nil => fallback
-  | :: a xs => a
+  | :: x _ => x
 
 \func tail {A : \Type} (xs : List A) : List A \elim xs
   | nil => nil
-  | :: a xs => xs
+  | :: _ xs => xs
 
 \instance ListEq {A : \Type} (dec : Eq A) : Eq (List A)
   | decideEq (xs ys : List A) : Decide (xs = ys) \elim xs, ys {
@@ -153,7 +153,7 @@
     | nil, :: _ _ => no \lam p => \case p
     | :: _ _, nil => no \lam p => \case p
     | :: x xs, :: y ys => \case dec.decideEq x y, decideEq xs ys \with {
-      | yes p, yes q => rewrite p $ rewrite q $ yes idp
+      | yes p, yes q => rewrite (p, q) $ yes idp
       | _, no q => no \lam k => q $ pmap tail k
       | no p, _ => no \lam k => p $ pmap (head x) k
     }
@@ -162,7 +162,7 @@
 -- 11. Докажите, что функции FromBoolToDec и FromDecToBool взаимно обратны.
 
 \func bdb {A : \Type} (p : A -> Bool) : FromDecToBool (FromBoolToDec p) = p =>
-  unfold (FromBoolToDec, FromDecToBool) $ ext $ \lam a => cases (p a) \with {
+  unfold (FromBoolToDec, FromDecToBool) $ ext \lam a => cases (p a) \with {
     | true => idp
     | false => idp
   }
