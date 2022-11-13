@@ -1,8 +1,17 @@
+\import Algebra.Meta
+\import Arith.Nat
 \import Data.Bool
 \import Data.List \hiding (headDef)
-\import Utils (<->)
-\import lect08
+\import Data.Maybe
+\import Function
+\import Function.Meta
+\import Logic.Meta
+\import Meta
 \import Order.LinearOrder
+\import Paths.Meta
+\import Utils (*>, <->, Either, Empty, absurd, pmap, sym)
+\import hw01 (fac)
+\import lect08
 \open LinearOrder
 
 -- 1. Реализуйте функцию filter и докажите ее корректность, то есть, что выполнены следующие условия:
@@ -10,28 +19,353 @@
 --    * Все элементы filter p xs удовлетворяют предикату p
 --    * Любой подсписок xs с тем же свойством является подсписком filter p xs
 
+\func filter {A : \Type} (pred : A -> Bool) (xs : List A) : List A \elim xs
+  | nil => nil
+  | :: x xs => \let t => filter pred xs \in \case pred x \with {
+    | false => t
+    | true => x :: t
+  }
+
+\data Sublist {A : \Type} (xs ys : List A) \elim xs, ys
+  | nil, nil => end
+  | xs, :: _ ys => drop (Sublist xs ys)
+  | :: x xs, :: y ys => take (x = y) (Sublist xs ys)
+
+\func nil-is-sublist {A : \Type} {xs : List A} : Sublist nil xs \elim xs
+  | nil => end
+  | :: _ _ => drop nil-is-sublist
+
+\func sublist-head {A : \Type} {x : A} {xs ys : List A} (sl : Sublist (x :: xs) ys) : Sublist xs ys \elim ys, sl
+  | :: _ _, take p sl => drop sl
+  | :: _ _, drop sl => drop $ sublist-head sl
+
+\func filter-is-sublist {A : \Type} (pred : A -> Bool) (xs : List A) : Sublist (filter pred xs) xs \elim xs
+  | nil => end
+  | :: x xs => \let t => filter-is-sublist pred xs \in cases (pred x) \with {
+    | true => take idp t
+    | false => drop t
+  }
+
+\data Satisfies {A : \Type} (pred : A -> Bool) (xs : List A) \elim xs
+  | nil => nil-satisfies
+  | :: x xs => cons-satisfies (pred x = true) (Satisfies pred xs)
+
+\func filter-satisfies {A : \Type} (pred : A -> Bool) (xs : List A) : Satisfies pred (filter pred xs) \elim xs
+  | nil => nil-satisfies
+  | :: x xs => \let t => filter-satisfies pred xs \in cases (pred x arg addPath) \with {
+    | false, _ => t
+    | true, q => cons-satisfies q t
+  }
+
+\func filter-greatest-sublist
+  {A : \Type}
+  {pred : A -> Bool}
+  {xs ys : List A}
+  (sl : Sublist ys xs)
+  (st : Satisfies pred ys) : Sublist ys (filter pred xs) \elim xs, ys, sl
+  | nil, nil, end => end
+  | :: x xs, ys, drop sl => \let t => filter-greatest-sublist sl st \in cases (pred x arg addPath) \with {
+    | false, p => t
+    | true, p => drop t
+  }
+  | :: x xs, :: y ys, take idp sl => \case st \with {
+    | cons-satisfies p st => rewrite p $ take idp $ filter-greatest-sublist sl st
+  }
+
 -- 2. Докажите, что Perm l1 l2 тогда и только тогда, когда Insertion.sort l1 = Insertion.sort l2.
+
+\func perm-sym {A : \Type} {xs ys : List A} (p : Perm xs ys) : Perm ys xs \elim xs, ys, p
+  | nil, nil, perm-nil => perm-nil
+  | :: x xs, :: y ys, perm-cons idp p => perm-cons idp (perm-sym p)
+  | :: x (:: x' xs), :: y (:: y' ys), perm-swap idp idp idp => perm-swap idp idp idp
+  | xs, ys, perm-trans p q => perm-trans (perm-sym q) (perm-sym p)
+
+\func perm-sort-equiv {A : Dec} (xs ys : List A) : Perm xs ys <-> (Insertion.sort xs = Insertion.sort ys) =>
+  (perm->sort, sort->perm)
+  \where {
+
+    \func perm->sort {A : Dec} {xs ys : List A} (p : Perm xs ys) : Insertion.sort xs = Insertion.sort ys \elim xs, ys, p
+      | nil, nil, perm-nil => idp
+      | :: x xs, :: y ys, perm-cons idp p => pmap (Insertion.sort.insert _) (perm->sort p)
+      | :: x (:: x' xs), :: y (:: y' ys), perm-swap idp idp idp => Insertion.sort-perm.insert-comm _ _ _
+      | xs, ys, perm-trans p q => perm->sort p *> perm->sort q
+
+    \func sort->perm {A : Dec} {xs ys : List A} (p : Insertion.sort xs = Insertion.sort ys) : Perm xs ys =>
+      perm-trans (Insertion.sort-perm xs) (rewrite p $ perm-sym $ Insertion.sort-perm ys)
+  }
 
 -- 3. Докажите, что спецификация "результат является перестановкой входа и отсортирован" является полной для функции sort.
 
-\func completeness {A : Dec} (sort : List A -> List A) (l : List A) (p : Perm l (sort l)) (s : Sorted (sort l)) : sort l = Insertion.sort l
-  => {?}
+\func completeness {A : Dec} (sort : List A -> List A) (l : List A) (p : Perm l (sort l)) (s : Sorted (sort l)) : sort l = Insertion.sort l =>
+  helper p s
+  \where {
+    \open Insertion
+    \open Insertion.sort
+
+    \func helper {A : Dec} {l l' : List A} (p : Perm l l') (s : Sorted l') : l' = sort l \elim l, l', p, s
+      | nil, _, p, _ => perm-nil-nil p
+      | :: _ nil, _, p, _ => perm-single-id p
+      | _, nil, p, _ =>  pmap sort $ sym $ perm-nil-nil $ perm-sym p
+      | _, :: _ nil, p, _ => pmap sort $ sym $ perm-single-id $ perm-sym p
+      | :: _ (:: _ _), :: _ (:: _ _), perm-cons idp p, sorted-cons _ s => rewriteI (helper p s) $ mcases $ idp <|> contradiction
+      | :: _ (:: _ _), :: _ (:: _ _), perm-swap idp idp idp, s => sort-idp s *> sort-perm.insert-comm _ _ _
+      | _, _, perm-trans p q, s => helper q s *> (sym $ perm-sort-equiv.perm->sort p)
+
+    \func sort-idp {A : Dec} {xs : List A} (s : Sorted xs) : xs = sort xs \elim xs, s
+      | nil, _ => idp
+      | :: _ _, sorted-cons _ s' \as s => perform-insert s *> pmap _ (sort-idp s')
+
+    \func perform-insert {A : Dec} {x : A} {xs : List A} (s : Sorted (x :: xs)) : x :: xs = insert x xs \elim xs, s
+      | nil, _ => idp
+      | :: _ _, sorted-cons _ _ => mcases $ idp <|> contradiction
+
+    \func perm-nil-nil {A : \Type} {xs : List A} (p : Perm nil xs) : xs = nil \elim xs, p
+      | nil, perm-nil => idp
+      | _, perm-trans {nil} _ q => perm-nil-nil q
+      | _, perm-trans {:: _ _} p _ => \case perm-nil-nil p
+
+    \func perm-single-id {A : \Type} {x : A} {xs : List A} (p : Perm (x :: nil) xs) : xs = x :: nil \elim xs, p
+      | :: _ _, perm-cons idp p => pmap (x ::) $ perm-nil-nil p
+      | _, perm-trans {nil} p _ => \case perm-single-id p
+      | _, perm-trans {:: z nil} p q => perm-single-id q *> perm-single-id p
+      | _, perm-trans {:: _ (:: _ _)} p _ => \case perm-single-id p
+  }
+
 
 -- 4. Определите факториал через хвостовую рекурсию.
 --    Докажите, что он равен обычному определению факториала.
+
+\open Nat (*, +)
+
+\func tail-fac (n : Nat) : Nat => helper 1 n
+  \where {
+    \func helper (acc n : Nat) : Nat \elim n
+      | 0 => acc
+      | suc n' \as n => helper (acc * n) n'
+  }
+
+\func fac-spec (f : Nat -> Nat) => \Sigma (f 0 = 1) (\Pi (n : Nat) -> f (suc n) = f n * suc n)
+
+\func fac-spec-complete {f g : Nat -> Nat} (p : fac-spec f) (q : fac-spec g) : f = g => ext (helper p q)
+  \where {
+    \func helper {f g : Nat -> Nat} (p : fac-spec f) (q : fac-spec g) (n : Nat) : f n = g n \elim n
+      | 0 => p.1 *> sym q.1
+      | suc n => p.2 n *> sym (rewrite (helper p q n) $ q.2 n)
+  }
+
+\func tail-fac-is-fac : fac-spec tail-fac => (idp, helper)
+  \where {
+    \func helper (n : Nat) : tail-fac (suc n) = tail-fac n * suc n => unfold tail-fac $ rewrite (helper-*, helper-+) idp
+
+    \func helper-+ (k k' n : Nat) : tail-fac.helper k n + tail-fac.helper k' n = tail-fac.helper (k + k') n \elim n
+      | 0 => idp
+      | suc n => rewrite (helper-+, arith-helper _ _ (suc n)) idp
+
+    \func helper-* (k k' n : Nat) : tail-fac.helper k n * k' = tail-fac.helper (k * k') n \elim n
+      | 0 => idp
+      | suc n => repeat (rewriteI (helper-+, helper-*)) $ rewriteI (arith-helper', helper-*) idp
+
+    \func arith-helper (k k' n : Nat) : k * n + (k' * n) = (k + k') * n => equation
+
+    \func arith-helper' (k k' n : Nat) : (k * n + k) * k' = (k * k' * n + k * k') => equation
+  }
+
+\func fac-is-fac : fac-spec fac => (idp, \lam n => equation)
+
+\func tail-fac-equiv : fac = tail-fac => fac-spec-complete fac-is-fac tail-fac-is-fac
 
 -- 5. Определите функцию, которая проверяет правильность скобочной последовательности.
 --    Докажите ее корректность.
 
 \data Paren | Left | Right
 
-\func isBalanced (xs : List Paren) : Bool
-  => {?}
+\func isBalanced (xs : List Paren) : Bool => \case balance 0 xs \with {
+  | just 0 => true
+  | _ => false
+}
+  \where {
+    \func balance (b : Nat) (xs : List Paren) : Maybe Nat \elim b, xs
+      | b, nil => just b
+      | b, :: Left xs => balance (suc b) xs
+      | suc b, :: Right xs => balance b xs
+      | 0, :: Right _ => nothing
+  }
 
 \data Balanced (xs : List Paren) \with
   | nil => nil-balanced
   | :: Left xs => cons-balanced {ys : List Paren} (Balanced ys) (xs = ys ++ Right :: nil)
   | xs => append-balanced {ys zs : List Paren} (Balanced ys) (Balanced zs) (xs = ys ++ zs)
 
-\func isBalanced-correct (xs : List Paren) : (isBalanced xs = true) <-> Balanced xs
-  => {?}
+\func isBalanced-correct (xs : List Paren) : (isBalanced xs = true) <-> Balanced xs => (isBalanced->Balanced, balanced->isBalanced)
+  \where {
+    \open isBalanced
+
+    \func balance-nil {k : Nat} : balance k nil = just k \elim k
+      | 0 => idp
+      | suc k => idp
+
+    \func balance-lem {k n : Nat} {xs : List Paren} (ys : List Paren) (p : balance k xs = just n)
+      : balance k (xs ++ ys) = balance n ys \elim k, xs
+      | 0, nil => pmap _ $ just-injective p
+      | 0, :: Left xs => balance-lem ys p
+      | 0, :: Right xs => \case p
+      | suc k, nil => pmap _ $ just-injective p
+      | suc k, :: Left xs => balance-lem ys p
+      | suc k, :: Right xs => balance-lem ys p
+
+    \func balance-lem' {k n : Nat} (k' : Nat) {xs : List Paren} (p : balance k xs = just n)
+      : balance (k' + k) xs = just (k' + n) \elim k, k', xs
+      | _, 0, _ => p
+      | 0, k', nil => rewriteI (just-injective p) balance-nil
+      | 0, suc k', :: Left xs => balance-lem' (suc k') p
+      | 0, suc k', :: Right xs => \case p
+      | suc k, suc k', nil => rewriteI (just-injective p) idp
+      | suc k, k', :: Left xs => balance-lem' k' p
+      | suc k, k', :: Right xs => balance-lem' k' p
+
+    \func balance-lem'' {n m : Nat} {xs ys : List Paren} (p : balance 0 xs = just n) (q : balance 0 ys = just m)
+      : balance 0 (xs ++ ys) = just (n + m) => balance-lem ys p *> balance-lem' n q
+
+    \func is-balanced-zero {xs : List Paren} (p : isBalanced xs = true) : balance 0 xs = just 0 =>
+      \let p' => unfold isBalanced p \in cases (balance 0 xs arg addPath) \with {
+        | nothing, pk => \case rewrite pk p'
+        | just (suc n), pk => \case rewrite pk p'
+        | just 0, _ => idp
+      }
+
+    \func balance-add-right {k n : Nat} {xs : List Paren} (p : balance k xs = just (suc n)) : balance k (xs ++ Right :: nil) = just n \elim k, xs
+      | 0, nil => \case just-injective p
+      | 0, :: Left xs => balance-add-right p
+      | 0, :: Right xs => \case p
+      | suc k, nil => rewrite (pmap pred $ just-injective p) balance-nil
+      | suc k, :: Left xs => balance-add-right p
+      | suc k, :: Right xs => balance-add-right p
+
+    \func balance-add-left {k n : Nat} {xs : List Paren} (p : balance k xs = just n) : balance k (Left :: xs) = just (suc n) \elim k, xs
+      | 0, nil => rewriteI (just-injective p) idp
+      | 0, :: Left xs => balance-lem' 1 p
+      | 0, :: Right xs => \case p
+      | suc k, nil => rewriteI (just-injective p) idp
+      | suc k, :: Left xs => balance-lem' 1 p
+      | suc k, :: Right xs => balance-lem' 1 p
+
+    \func balance-wrap {k n : Nat} {xs : List Paren} (p : balance k xs = just n) : balance k (Left :: xs ++ Right :: nil) = just n =>
+      balance-add-right $ balance-add-left p
+
+    \func balance-pull-left {k n : Nat} {xs : List Paren} (p : balance (suc n) xs = just k) : balance n (Left :: xs) = just k \elim n
+      | 0 => p
+      | suc n => p
+
+    \func append-equiv {A : \Type} {a : A} {xs ys : List A} : xs ++ a :: ys = (xs ++ a :: nil) ++ ys \elim xs
+      | nil => idp
+      | :: x xs => pmap (x ::) append-equiv
+
+    \func balance-append-left {n : Nat} {xs : List Paren} (p : balance 0 xs = just n) : balance 0 (xs ++ Left :: nil) = just (suc n) =>
+      balance-lem'' p idp
+
+    \func right-exists'
+      {n k : Nat}
+      {xs : List Paren}
+      (target acc : List Paren)
+      (p : balance (suc n) target = just 0)
+      (p' : target = acc ++ xs)
+      (p'' : balance 0 acc = just k)
+      : \Sigma (ys zs : List Paren) (balance 0 ys = just 0) (balance n zs = just 0) (target = ys ++ Right :: zs) \elim k, xs
+      | 0, :: Right xs =>
+        \let q' => sym (balance-lem (Right :: xs) $ balance-lem' (suc n) p'') *> pmap _ (sym p') *> p
+        \in (acc, xs, p'', q', p')
+      | suc n, :: Right xs => right-exists' target (acc ++ Right :: nil) p (rewriteI append-equiv p') (balance-add-right p'')
+      | _, :: Left xs => right-exists' target (acc ++ Left :: nil) p (rewriteI append-equiv p') (balance-append-left p'')
+      | _, nil =>
+        \let
+          | q => rewrite (p', ++_nil) p
+          | q'' => rewrite q (balance-lem' (suc n) p'')
+        \in \case just-injective q''
+
+    \func right-exists {n : Nat} {xs : List Paren} (p : balance (suc n) xs = just 0) => right-exists' xs nil p idp idp
+
+    \func balanced-split {xs : List Paren} (p : balance 0 xs = just 0)
+      : Either (xs = nil)
+        (\Sigma (ys zs : List Paren) (balance 0 ys = just 0) (balance 0 zs = just 0) (xs = Left :: ys ++ Right :: zs)) \elim xs
+      | nil => Either.inl idp
+      | :: Left xs => \let (ys, zs, q, q', q'') => right-exists p \in Either.inr (ys, zs, q, q', pmap (Left ::) q'')
+      | :: Right xs => \case p
+
+    \func \infix 4 < (a b : Nat) : \Type \elim a, b
+      | _, 0 => Empty
+      | 0, suc _ => \Sigma
+      | suc a, suc b => a < b
+
+    \func <-zero {k n : Nat} (p : k < n) : 0 < n \elim k, n
+      | 0, 0 => absurd p
+      | suc k, 0 => absurd p
+      | 0, suc n => p
+      | suc k, suc n => ()
+
+    \func <-append {A : \Type} {a : A} {n : Nat} {xs ys : List A} (p : length (xs ++ a :: ys) < n) : length xs < n \elim n, xs
+      | 0, nil => absurd p
+      | 0, :: _ _ => absurd p
+      | suc _, nil => ()
+      | suc _, :: _ _ => <-append p
+
+    \func <-suc {k n : Nat} (p : suc k < n) : k < n \elim k, n
+      | _, 0 => absurd p
+      | 0, suc _ => ()
+      | suc _, suc _ => <-suc p
+
+    \func <-++ {A : \Type} {n : Nat} {xs ys : List A} (p : length (xs ++ ys) < n) : length ys < n \elim xs
+      | nil => p
+      | :: _ _ => <-++ $ <-suc p
+
+    \func suc-< {k n : Nat} (p : k < n) : k < suc n \elim k
+      | 0 => ()
+      | suc k => <-suc p
+
+    \func suc-<-suc {k n : Nat} (p : suc k < n) : k < suc n => (suc-< o <-suc) p
+
+    \func zero-< {n : Nat} (p : n < 0) : Empty \elim n
+      | 0 => p
+      | suc n => p
+
+    \func <-suc-refl {n : Nat} : n < suc n \elim n
+      | 0 => ()
+      | suc n => <-suc-refl
+
+    \func preserve-fuel {n : Nat} {ys zs : List Paren} (q : length (ys ++ Right :: zs) < n)
+      : \Sigma (length ys < n) (length zs < n) \elim n, ys, zs
+      | 0, _, _ => \case zero-< q
+      | suc n, nil, nil => ((), ())
+      | suc n, nil, :: _ _ => ((), <-suc q)
+      | suc n, :: _ _, nil => (<-append q, ())
+      | suc n, :: _ _, zs => (<-append q, suc-<-suc $ <-++ q)
+
+    \func isBalanced->Balanced' (fuel : Nat) {xs : List Paren} (fuel-limit : length xs < fuel) (p : balance 0 xs = just 0) : Balanced xs \elim fuel
+      | 0 => absurd $ zero-< fuel-limit
+      | suc fuel => \case balanced-split p \with {
+        | Either.inl p => rewrite p nil-balanced
+        | Either.inr (ys, zs, q, q', q'') =>
+          \let
+            | f => rewrite q'' fuel-limit
+            | (f1, f2) => preserve-fuel f
+            | p' => cons-balanced (isBalanced->Balanced' fuel f1 q) idp
+            | p'' => isBalanced->Balanced' fuel f2 q'
+          \in rewrite (q'', append-equiv) $ append-balanced p' p'' idp
+      }
+
+    \func isBalanced->Balanced {xs : List Paren} (p : isBalanced xs = true) => isBalanced->Balanced' (suc $ length xs) <-suc-refl (is-balanced-zero p)
+
+    \func wrap-is-balanced {xs : List Paren} (p : isBalanced xs = true) : isBalanced (Left :: xs ++ Right :: nil) = true =>
+      \let p' => balance-wrap $ is-balanced-zero p \in unfold isBalanced $ mcases {_} {arg addPath} \with {
+        | just 0, _ => idp
+        | just (suc n), q => \case sym p' *> q
+        | nothing, q => \case sym p' *> q
+      }
+
+    \func append-is-balanced {xs ys : List Paren} (p : isBalanced xs = true) (q : isBalanced ys = true) : isBalanced (xs ++ ys) = true =>
+      unfold isBalanced $ rewrite (balance-lem'' (is-balanced-zero p) (is-balanced-zero q)) idp
+
+    \func balanced->isBalanced {xs : List Paren} (p : Balanced xs) : isBalanced xs = true \elim xs, p
+      | nil, nil-balanced => idp
+      | :: Left xs, cons-balanced p idp => wrap-is-balanced $ balanced->isBalanced p
+      | xs, append-balanced p q k => rewrite k $ append-is-balanced (balanced->isBalanced p) (balanced->isBalanced q)
+  }
