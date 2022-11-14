@@ -199,6 +199,7 @@
 \func isBalanced-correct (xs : List Paren) : (isBalanced xs = true) <-> Balanced xs => (isBalanced->Balanced, balanced->isBalanced)
   \where {
     \open isBalanced
+    \open NatSemiring(<)
 
     \func balance-nil {k : Nat} : balance k nil = just k \elim k
       | 0 => idp
@@ -249,9 +250,6 @@
       | suc k, :: Left xs => balance-lem' 1 p
       | suc k, :: Right xs => balance-lem' 1 p
 
-    \func balance-wrap {k n : Nat} {xs : List Paren} (p : balance k xs = just n) : balance k (Left :: xs ++ Right :: nil) = just n =>
-      balance-add-right $ balance-add-left p
-
     \func balance-pull-left {k n : Nat} {xs : List Paren} (p : balance (suc n) xs = just k) : balance n (Left :: xs) = just k \elim n
       | 0 => p
       | suc n => p
@@ -291,68 +289,46 @@
       | :: Left xs => \let (ys, zs, q, q', q'') => right-exists p \in Either.inr (ys, zs, q, q', pmap (Left ::) q'')
       | :: Right xs => \case p
 
-    \func \infix 4 < (a b : Nat) : \Type \elim a, b
-      | _, 0 => Empty
-      | 0, suc _ => \Sigma
-      | suc a, suc b => a < b
+    \func <suc {a b : Nat} (p : a < b) : a < suc b \elim a, b, p
+      | 0, suc b, <.zero<suc => <.zero<suc
+      | suc a, suc b, <.suc<suc p => <.suc<suc $ <suc p
 
-    \func <-zero {k n : Nat} (p : k < n) : 0 < n \elim k, n
-      | 0, 0 => absurd p
-      | suc k, 0 => absurd p
-      | 0, suc n => p
-      | suc k, suc n => ()
+    \func suc< {a b : Nat} (p : suc a < b) : a < b \elim b, p
+      | suc b, <.suc<suc p => <suc p
 
-    \func <-append {A : \Type} {a : A} {n : Nat} {xs ys : List A} (p : length (xs ++ a :: ys) < n) : length xs < n \elim n, xs
-      | 0, nil => absurd p
-      | 0, :: _ _ => absurd p
-      | suc _, nil => ()
-      | suc _, :: _ _ => <-append p
+    \func length-++ {A : \Type} {xs ys : List A} : length (xs ++ ys) = length xs + length ys \elim xs
+      | nil => idp
+      | :: _ _ => pmap suc length-++
 
-    \func <-suc {k n : Nat} (p : suc k < n) : k < n \elim k, n
-      | _, 0 => absurd p
-      | 0, suc _ => ()
-      | suc _, suc _ => <-suc p
-
-    \func <-++ {A : \Type} {n : Nat} {xs ys : List A} (p : length (xs ++ ys) < n) : length ys < n \elim xs
-      | nil => p
-      | :: _ _ => <-++ $ <-suc p
-
-    \func suc-< {k n : Nat} (p : k < n) : k < suc n \elim k
-      | 0 => ()
-      | suc k => <-suc p
-
-    \func suc-<-suc {k n : Nat} (p : suc k < n) : k < suc n => (suc-< o <-suc) p
-
-    \func zero-< {n : Nat} (p : n < 0) : Empty \elim n
-      | 0 => p
-      | suc n => p
-
-    \func <-suc-refl {n : Nat} : n < suc n \elim n
-      | 0 => ()
-      | suc n => <-suc-refl
+    \func +< {a b c : Nat} (p : a + b < c) : \Sigma (a < c) (b < c) \elim a, b, c, p
+      | a, 0, suc c, p => (p, <.zero<suc)
+      | a, suc b, suc c, <.suc<suc p => \let (p', q') => +< p \in (<suc p', <.suc<suc q')
 
     \func preserve-fuel {n : Nat} {ys zs : List Paren} (q : length (ys ++ Right :: zs) < n)
-      : \Sigma (length ys < n) (length zs < n) \elim n, ys, zs
-      | 0, _, _ => \case zero-< q
-      | suc n, nil, nil => ((), ())
-      | suc n, nil, :: _ _ => ((), <-suc q)
-      | suc n, :: _ _, nil => (<-append q, ())
-      | suc n, :: _ _, zs => (<-append q, suc-<-suc $ <-++ q)
+      : \Sigma (length ys < n) (length zs < n) \elim n, ys, q
+      | suc n, nil, <.suc<suc q => (<.zero<suc, <suc q)
+      | suc n, :: _ _, <.suc<suc q => \let q' => rewrite length-++ q | (p, p') => +< $ suc< q' \in (<.suc<suc p, <suc p')
+
+    \func suc<suc-remove {a b : Nat} (p : suc a < suc b) : a < b \elim p
+      | <.suc<suc p => p
 
     \func isBalanced->Balanced' (fuel : Nat) {xs : List Paren} (fuel-limit : length xs < fuel) (p : balance 0 xs = just 0) : Balanced xs \elim fuel
-      | 0 => absurd $ zero-< fuel-limit
+      | 0 => \case fuel-limit
       | suc fuel => \case balanced-split p \with {
         | Either.inl p => rewrite p nil-balanced
         | Either.inr (ys, zs, q, q', q'') =>
           \let
             | f => rewrite q'' fuel-limit
-            | (f1, f2) => preserve-fuel f
+            | (f1, f2) => preserve-fuel $ suc<suc-remove f
             | p' => cons-balanced (isBalanced->Balanced' fuel f1 q) idp
             | p'' => isBalanced->Balanced' fuel f2 q'
           \in rewrite (q'', append-equiv) $ append-balanced p' p'' idp
       }
 
-    \func isBalanced->Balanced {xs : List Paren} (p : isBalanced xs = true) => isBalanced->Balanced' (suc $ length xs) <-suc-refl (is-balanced-zero p)
+    \func isBalanced->Balanced {xs : List Paren} (p : isBalanced xs = true) => isBalanced->Balanced' (suc $ length xs) id<suc (is-balanced-zero p)
+
+    \func balance-wrap {k n : Nat} {xs : List Paren} (p : balance k xs = just n) : balance k (Left :: xs ++ Right :: nil) = just n =>
+      balance-add-right $ balance-add-left p
 
     \func wrap-is-balanced {xs : List Paren} (p : isBalanced xs = true) : isBalanced (Left :: xs ++ Right :: nil) = true =>
       \let p' => balance-wrap $ is-balanced-zero p \in unfold isBalanced $ mcases {_} {arg addPath} \with {
