@@ -1,26 +1,74 @@
-\import lect11
-\import Utils \hiding (transport,Or,inl,inr)
+\import Equiv (QEquiv)
+\import Equiv.Univalence
+\import Function.Meta
+\import Logic (TruncP, inP)
+\import Logic.Meta
+\import Meta
+\import Paths (transport)
+\import Paths.Meta
+\import hw10 (pi-isSet)
+\import lect10 (setLem)
+\import lect11 \hiding (transport)
+\import Utils \hiding (transport, Or, inl, inr)
 
 -- 1. Докажите, что если A : \Prop, то Trunc A эквивалентен A.
 
-\func trunc-prop {A : \Prop} : Trunc A <-> A => {?}
+\func trunc-prop {A : \Prop} : Trunc A <-> A => (\case __ \with {
+trunc a => a
+}, trunc)
 
 -- 2. Докажите следующий закон де Моргана.
 
-\func deMorgan (A B C : \Prop) : (\Sigma A (B `Or` C)) <-> ((\Sigma A B) `Or` (\Sigma A C)) => {?}
+\func deMorgan (A B C : \Prop) : (\Sigma A (B `Or` C)) <-> ((\Sigma A B) `Or` (\Sigma A C)) => (
+  \case __ \with {
+    | (a, inl b) => inl (a, b)
+    | (a, inr c) => inr (a, c)
+  },
+  \case __ \with {
+    | inl (a, b) => (a, inl b)
+    | inr (a, c) => (a, inr c)
+  }
+)
 
 -- 3. Определите элиминатор для Or через Or-rec, не используя паттерн матчинг на Or.
 
 \func Or-elim {A B : \Prop} (C : Or A B -> \Prop)
               (f : \Pi (x : A) -> C (inl x)) (g : \Pi (y : B) -> C (inr y))
-              (p : A `Or` B) : C p => {?}
+              (p : A `Or` B) : C p =>
+  Or-rec {A} {B} {C p} (\lam x => transport C (Path.inProp _ _) (f x)) (\lam x => transport C (Path.inProp _ _) (g x)) p
 
 -- 4. Докажите, что тип утверждений является множеством.
 
-\func prop-isSet : isSet \Prop => {?}
+
+\func prop-isSet : isSet \Prop => setLem (\lam A B => Equiv.Equiv {A} {B}) (\lam x y a b => Equiv.Equiv.equals (ext (\lam k => Path.inProp _ _))) (\lam a => Equiv.idEquiv) (\lam {a} {a'} e => Equiv-to-= e)
+
+\func prop-set {P : \Type} (p : isProp P) : isSet P =>
+    \lam x y (path a) (path b) => \let k : a = b => ext (\lam i => p _ _) \in rewrite k idp
+
+\func isProp-prop {P : \Type} (p q : isProp P) : p = q => ext (\lam x y => prop-set p _ _ _ _)
+
 
 -- 5. Докажите, что функции Prop1-to-Prop2 и Prop2-to-Prop1 взаимно обратны и, как следствие, что Prop1 = Prop2.
 
+\sfunc outc {A : \Type} {p : isProp A} (x : Prop2-to-Prop1' A p) : A \elim x
+  | inc a => a
+
+\func outc' {A : \Type} (p : isProp A) (x : A) : outc (inc {_} {p} x) = x => \peval outc (inc x)
+
+\func inc' {A : \Type} (p : isProp A) (x : Prop2-to-Prop1' A p) : inc (outc x) = x \elim x
+  | inc a => pmap inc $ outc' _ _
+
+\func Prop2'-eq-P {A : \Type} (p : isProp A) : Prop2-to-Prop1' A p = A => ext (\new QEquiv {
+  | f => outc
+  | ret => inc
+  | ret_f => inc' p
+  | f_sec => outc' p
+})
+
+\func Prop1-inv-Prop2 (P : \Prop) : Prop2-to-Prop1 (Prop1-to-Prop2 P) = P => Prop2'-eq-P pathInProp
+
+\func Prop2-inv-Prop1 (P : Prop2) : Prop1-to-Prop2 (Prop2-to-Prop1 P) = P \elim P
+  | (P, p) => ext (Prop2'-eq-P p, isProp-prop _ _)
 -- Можно сделать только одно из упражнений 6a,6b на выбор.
 -- 6a. Тип С называется когенератором, если для любых множеств A и B и любых функция f,g : A -> B верно, что если h `o` f = h `o` g для всех h : B -> C, то f = g.
 --     Докажите, что \Prop является когенератором.
@@ -29,20 +77,117 @@
 
 \func isCogenerator (C : \Type) => \Pi {A B : \Set} (f g : A -> B) (p : \Pi (h : B -> C) -> h `o` f = h `o` g) -> f = g
 
-\func PropIsCogenerator : isCogenerator \Prop => {?}
+\func PropIsCogenerator : isCogenerator \Prop => \lam {A} {B} f g p
+=> ext (\lam x => \let q => unfold o $ p (\lam b => f x = b) \in transport (\lam k => k x) q idp)
 
 -- 6b. Тип X называется инъективным, если для любой функции f : A -> X и любой инъекции i : A -> B сущесвует функция l : B -> X такая, что l `o` i = f.
 --     Докажите, что \Prop инъективен.
 
 \func isInj {A B : \Type} (f : A -> B) => \Pi (x y : A) -> f x = f y -> x = y
 
-\func isInjective (X : \Type) => \Pi {A B : \Type} (f : A -> X) (i : A -> B) (p : isInj i) -> \Sigma (l : B -> X) (l `o` i = f)
+\func isInjective (X : \Type) =>
+  \Pi {A B : \Type} (f : A -> X) (i : A -> B) (p : isInj i) -> \Sigma (l : B -> X) (l `o` i = f)
 
-\func Prop-isInjective : isInjective \Prop => {?}
+\func inj-inv {A B : \Type} {C : \Set} {i : A -> B} (f : A -> C) (p : isInj i) : \Sigma (g : image i -> C) (\Pi (x : A) -> g (i x, inP (x, idp)) = f x) =>
+  (
+    \lam (b, l) => extr-image f p l,
+    \lam x => pmap (\lam k => k.1) $ rec-forward' {\Sigma (a : A) (i a = i x)} (x, idp) (extr f) (extr-prop f p)
+  )
+  \where {
+    \func extr {A B C : \Type} {i : A -> B} (f : A -> C) {b : B} (l : \Sigma (a : A) (i a = b)) : C \elim l
+      | (a,_) => f a
+
+    \func extr-prop {A B C : \Type} {i : A -> B} (f : A -> C) (p : isInj i) {b : B} (l l' : \Sigma (a : A) (i a = b)) : extr f l = extr f l' \elim l, l'
+      | (a,q), (a',q') => pmap f $ p _ _ $ q *> sym q'
+
+    \func extr-image {A B : \Type} {C : \Set} {i : A -> B} (f : A -> C) (p : isInj i) {b : B} (l : TruncP (\Sigma (a : A) (i a = b))) : C =>
+      (TruncP.rec-set l (extr f) (extr-prop f p)).1
+
+    \func rec-set-prop {A : \Type} {B : \Set} (f : A -> B) (p : \Pi (a a' : A) -> f a = f a') (x y : \Sigma (b : B) (∃ (a : A) (f a = b))) : x = y \elim x, y
+      | (b,inP (a,fa=b)), (b',inP (a',fa'=b')) => ext $ sym fa=b *> p a a' *> fa'=b'
+
+    \func rec-forward' {A : \Type} {B : \Set} (a : A) (f : A -> B) (p : \Pi (a a' : A) -> f a = f a')
+      : TruncP.rec-set (inP a) f p = (f a, inP (a, idp)) => rec-set-prop f p _ _
+  }
+
+\func image-proj-set {A B : \Type} (i : A -> B) : isSet (image i -> \Prop) =>
+  pi-isSet (\lam _x => \Prop) (\lam x => prop-isSet)
+
+\func Prop-isInjective : isInjective \Prop => \lam {A} {B} f i p => {?}
 
 -- Можно сделать только одно из упражнений 7a,7b на выбор.
 -- 7a. Докажите, что (Bool = Bool) = Bool.
 
-\func BoolAut : (Bool = Bool) = Bool => {?}
+\func xor (a b : Bool) : Bool \elim a
+  | true => not b
+  | false => b
 
+\func xor-idp (a b : Bool) : xor a (xor a b) = b => cases (a, b) idp
+
+\func BoolAut : (Bool = Bool) = Bool => (QEquiv-to-= $ univalence {Bool} {Bool}) *> ext (\new Equiv.QEquiv {
+  | f => \lam x => x false
+  | ret => \lam b => \new QEquiv {
+    | f => xor b
+    | ret => xor b
+    | ret_f => xor-idp b
+    | f_sec => xor-idp b
+  }
+  | ret_f => \lam x =>
+      \let (b, f-xor) => inv-is-xor Equiv.Equiv.f (Equiv.Equiv.ret {x}) Equiv.Equiv.ret_f
+      \in Equiv.Equiv.equals $ rewrite f-xor (cases b idp)
+  | f_sec => cases __ idp
+})
+  \where {
+    \func inv-inj {A B : \Type} (f : A -> B) (g : B -> A) (e : \Pi (x : A) -> g (f x) = x) : \Pi {x y : A} (f x = f y) -> x = y =>
+      \lam {x} {y} p => sym (e x) *> pmap g p *> e y
+
+    \func inv-is-xor (f g : Bool -> Bool) (e : \Pi (x : Bool) -> g (f x) = x) : \Sigma (b : Bool) (f = xor b) =>
+      \let i => inv-inj f g e \in cases (f false arg addPath, f true arg addPath) \with {
+        | false, p, true, q => (false, ext (\lam b => cases b $ p <|> q))
+        | true, p, false, q => (true, ext (\lam b => cases b $ p <|> q))
+        | true, p, true, q => \case i (p *> sym q)
+        | false, p, false, q => \case i (p *> sym q)
+      }
+  }
 -- 7b. Докажите, что (n+m)-элементное множество равно размеченному объединению n- и m-элементных множеств.
+
+\open Nat (+)
+
+\func disjun-eq (n m : Nat) : Fin (n + m) = Either (Fin n) (Fin m) =>
+  ext $ \new QEquiv {
+          | f => finSplit
+          | ret => finMerge
+          | ret_f => merge-split
+          | f_sec => split-merge
+        }
+  \where {
+    \func finSplit {n m : Nat} (x : Fin (n + m)) : Either (Fin n) (Fin m) \elim n, x
+      | 0, x => Either.inr x
+      | suc n, 0 => Either.inl 0
+      | suc n, suc x => \case finSplit x \with {
+        | Either.inl a => Either.inl (suc a)
+        | Either.inr b => Either.inr b
+      }
+
+    \func finMerge {n m : Nat} (x : Either (Fin n) (Fin m)) : Fin (n + m) \elim n, x
+      | 0, Either.inl ()
+      | 0, Either.inr b => b
+      | suc n, Either.inl 0 => 0
+      | suc n, Either.inl (suc a) => suc (finMerge $ Either.inl a)
+      | suc n, Either.inr b => suc $ (finMerge $ Either.inr b)
+
+    \func merge-split {n m : Nat} (x : Fin (n + m)) : finMerge (finSplit x) = x \elim n, x
+      | 0, x => idp
+      | suc n, 0 => idp
+      | suc n, suc x => (mcases {_} {arg addPath} \with {
+        | Either.inl a, q => pmap (\lam x => suc $ finMerge x) $ sym q
+        | Either.inr b, q => pmap (\lam x => suc $ finMerge x) $ sym q
+      }) *> (pmap (\lam f => suc f) $ merge-split x)
+
+    \func split-merge {n m : Nat} (x : Either (Fin n) (Fin m)) : finSplit (finMerge x) = x \elim n, x
+      | 0, Either.inl ()
+      | 0, Either.inr b => idp
+      | suc n, Either.inl 0 => idp
+      | suc n, Either.inl (suc a) => rewrite split-merge idp
+      | suc n, Either.inr b => rewrite split-merge idp
+  }
