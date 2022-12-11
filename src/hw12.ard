@@ -1,15 +1,35 @@
+\import Arith.Nat (NatSemiring, id<suc, suc<=suc, zero<=_)
+\import Function.Meta
+\import Logic (inP)
+\import Meta
+\import Order.LinearOrder
+\import Paths.Meta
+\import Prelude
 \import Utils
 \import lect12
 
 -- 1. Определите функцию negPred : Int -> Int такую, что negPred x = x, если x > 0, и negPred x = x - 1, если x <= 0.
 
-\func negPred (x : Int) : Int => {?}
+\func negPred (x : Int) : Int
+  | 0 => neg 1
+  | neg n => neg (suc n)
+  | pos (suc n) => suc n
 
 -- 2. Определите функции сложения и умножения для Int.
 
-\func \infixl 6 + (x y : Int) : Int => {?}
+\func \infixl 6 + (x y : Int) : Int
+  | pos n, pos m => pos (n Nat.+ m)
+  | neg (suc n), neg (suc m) => neg (suc $ suc $ n Nat.+ m)
+  | 0, neg m => neg m
+  | neg n, 0 => neg n
+  | pos (suc n), neg (suc m) => pos n + neg m
+  | neg (suc n), pos (suc m) => neg n + suc m
 
-\func \infixl 7 * (x y : Int) : Int => {?}
+\func \infixl 7 * (x y : Int) : Int
+  | pos n, pos m => pos (n Nat.* m)
+  | pos n, neg m => neg (n Nat.* m)
+  | neg (suc n), pos m => neg (suc n Nat.* m)
+  | neg (suc n), neg (suc m) => pos (suc n Nat.* suc m)
 
 -- 3. Определите тип данных BinNat для бинарных натуральных чисел.
 --    У него должно быть три конструктора: для 0, для чисел вида 2*n и чисел вида 2*n+1.
@@ -17,6 +37,11 @@
 --    Используйте типы данных с условиями, чтобы вычислительно отождествить различные нули.
 
 \data BinNat
+  | zro
+  | evn BinNat \with {
+    | zro => zro
+  }
+  | odd BinNat
 
 -- 4. Докажите, что функция pred сюръективна.
 
@@ -24,11 +49,13 @@
   | 0 => 0
   | suc n => n
 
-\func pred-is-sur : isSur pred => {?}
+\func pred-is-sur : isSur pred => \lam b => inP (suc b, idp)
 
 -- 5. Докажите, что функция suc не сюръективна.
 
-\func suc-is-not-sur (p : isSur suc) : Empty => {?}
+\func suc-is-not-sur (p : isSur suc) : Empty => \case p 0 \with {
+  | inP (_, ())
+}
 
 -- 6. Пусть f : A -> B и g : B -> C ─ некоторые функции.
 --    Докажите, что если f и g сюръективны, то g `o` f также сюръективна.
@@ -36,13 +63,20 @@
 
 \func \fixr 9 o {A B C : \Type} (g : B -> C) (f : A -> B) => \lam a => g (f a)
 
-\func o-sur {A B C : \Type} (f : A -> B) (g : B -> C) (p : isSur f) (q : isSur g) : isSur (g `o` f) => {?}
+\func o-sur {A B C : \Type} (f : A -> B) (g : B -> C) (p : isSur f) (q : isSur g) : isSur (g `o` f) =>
+  \lam c => \case q c \with {
+    | inP (b, y) => \case (p b) \with {
+      | inP (a, x) => inP (a, pmap g x *> y)
+    }
+  }
 
-\func o-sur' {A B C : \Type} (f : A -> B) (g : B -> C) (p : isSur (g `o` f)) : isSur g => {?}
+\func o-sur' {A B C : \Type} (f : A -> B) (g : B -> C) (p : isSur (g `o` f)) : isSur g => \lam c => \case p c \with {
+  | inP (a, x) => inP (f a, x)
+}
 
 -- 7. Определите множество конечных подмножеств множества A, то есть списков элементов A с точностью до перестановок и повторений элементов.
 
-\data Set (A : \Set) : \Set
+\func Set (A : \Set) : \Set => Quotient (List A) {?}
 
 -- 8. Докажите теорему Кантора.
 
@@ -55,19 +89,148 @@
 -- Формально утверждение теоремы Кантора состоит из двух частей:
 -- "существует инъекция из A в Subs A" и "не существует сюръекции из A в Subs A".
 
-\func cantor1 (A : \Set) : \Sigma (f : A -> Subs A) (isInj f)
-  => {?}
+\func cantor1 (A : \Set) : \Sigma (f : A -> Subs A) (isInj f) =>
+  (\lam a b => a = b, \lam {x} {y} p => sym $ coe (pmap (\lam f => f x) p) idp right)
 
-\func cantor2 (A : \Set) (f : A -> Subs A) (p : isSur f) : Empty
-  => {?}
+\func cantor2 (A : \Set) (f : A -> Subs A) (p : isSur f) : Empty =>
+  \let
+    | g => \lam a => Not (f a a)
+
+  \in \case p g \with {
+    | inP (a, q) =>
+      \let
+        | h : Not (f a a) => \lam fa => rewriteF q fa fa
+        | h' : f a a => \let q' => sym $ pmap (\lam x => x a) q \in coe q' h right
+      \in h h'
+  }
 
 -- Optional
 -- 9. Постройте функции Nat -> BinNat и BinNat -> Nat и докажите, что они взаимно обратны.
 
-\func NatToBinNat (n : Nat) : BinNat => {?}
+\open NatSemiring (<, suc<suc, zero<suc, <-transitive)
+\open LinearOrder (<=)
 
-\func BinNatToNat (b : BinNat) : Nat => {?}
+\func NatToBinNat (n : Nat) : BinNat => NatToBinNat' (suc n) n id<suc
+  \where {
+    \func NatToBinNat' (fuel : Nat) (n : Nat) (p : n < fuel) : BinNat \elim fuel, n, p
+      | 0, _, ()
+      | _, 0, _ => zro
+      | suc fuel, suc n' \as n, suc<suc p => \let t => NatToBinNat' fuel (half n) (<-transitive-right half-lesseq p) \in \case isEven n \with {
+        | true => evn t
+        | false => odd t
+      }
 
-\func nbn (n : Nat) : BinNatToNat (NatToBinNat n) = n => {?}
+    \func half (n : Nat) : Nat
+      | 0 => 0
+      | 1 => 0
+      | suc (suc n) => suc (half n)
+
+    \func isEven (n : Nat) : Bool \elim n
+      | 0 => true
+      | 1 => false
+      | suc (suc n) => isEven n
+
+    \func half-even {n : Nat} (p : isEven n = true) : 2 Nat.* half n = n \elim n
+      | 0 => idp
+      | 1 => \case p
+      | suc (suc n) => pmap (\lam x => suc $ suc x) $ half-even p
+
+    \func half-odd {n : Nat} (p : isEven n = false) : suc (2 Nat.* half n) = n \elim n
+      | 0 => \case p
+      | 1 => idp
+      | suc (suc n) => pmap (\lam x => suc $ suc x) $ half-odd p
+
+    \func half-lesseq {n : Nat} : half (suc n) LinearOrder.<= n \elim n
+      | 0 => LinearOrder.<=-refl
+      | 1 => LinearOrder.<=-refl
+      | suc (suc n) => suc<=suc $ LinearOrder.<=-transitive half-lesseq id<=suc
+
+    \func id<=suc {n : Nat} : n LinearOrder.<= suc n \elim n
+      | 0 => zero<=_
+      | suc n => suc<=suc id<=suc
+  }
+
+\func BinNatToNat (b : BinNat) : Nat \elim b
+  | zro => 0
+  | evn b => 2 Nat.* BinNatToNat b
+  | odd b => suc $ 2 Nat.* BinNatToNat b
+
+\func nbn (n : Nat) : BinNatToNat (NatToBinNat n) = n => nbn' id<suc
+  \where {
+    \func nbn' {fuel n : Nat} (p : n < fuel) : BinNatToNat (NatToBinNat.NatToBinNat' fuel n p) = n \elim fuel, n, p
+      | suc fuel, 0, _ => idp
+      | suc fuel, suc n' \as n, suc<suc p => cases (NatToBinNat.isEven n arg addPath) \with {
+        | true, q => rewrite nbn' $ NatToBinNat.half-even q
+        | false, q => rewrite nbn' $ NatToBinNat.half-odd q
+      }
+  }
 
 \func bnb (b : BinNat) : NatToBinNat (BinNatToNat b) = b => {?}
+  \where {
+    \lemma double-zro {n : Nat} (p : 2 Nat.* n = 0) : n = 0 \elim n
+      | 0 => idp
+      | suc n => \case p
+
+    \lemma bnb-zro {b : BinNat} (p : BinNatToNat b = 0) : b = zro \elim b, p
+      | zro, p => idp
+      | evn b, p => pmap evn (bnb-zro $ double-zro p)
+
+    \lemma bnb-double {fuel : Nat} {b : BinNat} (p : 2 Nat.* BinNatToNat b < suc fuel) : NatToBinNat.NatToBinNat' (suc fuel) _ p = NatToBinNat.NatToBinNat' fuel (BinNatToNat b) (fuel-helper $ {?})
+
+    \func bnb' {fuel : Nat} (b : BinNat) (p : BinNatToNat b < fuel) : NatToBinNat.NatToBinNat' fuel (BinNatToNat b) p = b \elim fuel, b, p
+      | 0, zro, ()
+      | suc fuel, zro, _ => idp
+      | suc fuel, evn (odd b' \as b), suc<suc p => cases (NatToBinNat.isEven (2 Nat.* (2 Nat.* BinNatToNat b')) arg addPath) \with {
+        | true, q => unfold_let $ pmap evn $ bnb'' (pmap suc even-half) *> bnb' {fuel} b (<-transitive-right (suc<=suc double-helper) p)
+        | false, q => \case sym double-even *> q
+      }
+      | suc fuel, evn b, p => {?}
+      | suc fuel, odd b, suc<suc p => cases (NatToBinNat.isEven (suc (2 Nat.* BinNatToNat b)) arg addPath) \with {
+        | true, q => \case sym suc-2-odd *> q
+        | false, q => pmap odd $ bnb'' odd-half *> bnb' {fuel} b (fuel-helper p)
+      }
+
+    \lemma fuel-helper {fuel n : Nat} (p : 2 Nat.* n < fuel) : n < fuel \elim fuel, n, p
+      | 0, 0, ()
+      | suc fuel, 0, zero<suc => zero<suc
+      | suc fuel, suc n, suc<suc p => suc<suc $ fuel-helper (suc-helper p)
+
+    \lemma suc-helper {n m : Nat} (p : suc n < m) : n < m \elim  m, p
+      | suc m, suc<suc p => <-transitive p id<suc
+
+    \lemma double-helper {n : Nat} : n <= 2 Nat.* n \elim n
+      | 0 => zero<=_
+      | suc n => suc<=suc $ suc-helper' double-helper
+
+    \lemma suc-helper' {n m : Nat} (p : n <= m) : n <= suc m \elim n, m
+      | 0, _ => zero<=_
+      | suc n, 0 => \case p zero<suc
+      | suc n, suc m => suc<=suc $ suc-helper' (\lam x => p $ suc<suc x)
+
+    \func bnb'' {fuel n m : Nat} (e : n = m) {p : n < fuel} {q : m < fuel} : NatToBinNat.NatToBinNat' fuel n p = NatToBinNat.NatToBinNat' fuel m q \elim fuel, n, m, e, p, q
+      | suc fuel, 0, 0, e, zero<suc, zero<suc => idp
+      | suc fuel, suc n' \as n, suc m' \as m, e, suc<suc p, suc<suc q => cases (NatToBinNat.isEven n arg addPath, NatToBinNat.isEven m arg addPath) \with {
+        | true, p', true, q' => pmap evn $ bnb'' (pmap NatToBinNat.half e)
+        | false, p', false, q' => pmap odd $ bnb'' (pmap NatToBinNat.half e)
+        | true, p', false, q' => \case sym p' *> rewrite e q'
+        | false, p', true, q' => \case sym p' *> rewrite e q'
+      }
+      | suc fuel, 0, suc m, (), p, q
+      | suc fuel, suc n, 0, (), p, q
+
+    \func suc-2-odd {n : Nat} : NatToBinNat.isEven (suc (2 Nat.* n)) = false \elim n
+      | 0 => idp
+      | suc n => suc-2-odd
+
+    \func double-even {n : Nat} : NatToBinNat.isEven (2 Nat.* n) = true \elim n
+      | 0 => idp
+      | suc n => double-even
+
+    \func odd-half {n : Nat} : NatToBinNat.half (suc (2 Nat.* n)) = n \elim n
+      | 0 => idp
+      | suc n => pmap suc odd-half
+
+    \func even-half {n : Nat} : NatToBinNat.half (2 Nat.* n) = n \elim n
+      | 0 => idp
+      | suc n => pmap suc even-half
+  }
