@@ -96,7 +96,7 @@
 
 -- 3. Докажите, что спецификация "результат является перестановкой входа и отсортирован" является полной для функции sort.
 
-\func completeness {A : Dec} (sort : List A -> List A) (l : List A) (p : Perm l (sort l)) (s : Sorted (sort l)) : sort l = Insertion.sort l =>
+\func completeness {A : Dec} (sort' : List A -> List A) (l : List A) (p : Perm l (sort' l)) (s : Sorted (sort' l)) : sort' l = Insertion.sort l =>
   helper p s
   \where {
     \open Insertion

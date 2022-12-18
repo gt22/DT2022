@@ -1,34 +1,176 @@
+\import Prelude \hiding (::, nil)
+\import Function
+\import Function.Meta \hiding (#)
+\import Logic (inP, truncP)
+\import Logic.Meta
+\import Meta
+\import Paths.Meta
+\import Set
 \import Utils
 \import lect12 \hiding (sym)
 \import lect13
 
 -- 1. Докажите, что add x (add x s) = add x s и add x (add y s) = add y (add x s)
 
-\func add-idemp {S : SetSpec} (x : S.A) (s : S) : add x (add x s) = add x s
-  => {?}
+\lemma add-idemp {S : SetSpec} (x : S.A) (s : S) : add x (add x s) = add x s =>
+  setExt (\lam a => (helper o add-univ, add-tail))
+  \where {
+    \lemma helper {S : SetSpec} {a x : S.A} {s : S} (p : Or (a = x) (isElem a (add x s))) : isElem a (add x s) \elim p
+      | byLeft idp => add-head
+      | byRight b => b
+  }
 
-\func add-swap {S : SetSpec} (x y : S.A) (s : S) : add x (add y s) = add y (add x s)
-  => {?}
+\lemma add-swap {S : SetSpec} (x y : S.A) (s : S) : add x (add y s) = add y (add x s) =>
+  setExt (\lam a => (helper, helper))
+  \where {
+    \func helper {S : SetSpec} {a x y : S.A} {s : S} (p : isElem a (add x (add y s))) : isElem a (add y (add x s)) =>
+      \case add-univ p \with {
+        | byLeft p => rewrite p $ add-tail add-head
+        | byRight p => \case add-univ p \with {
+          | byLeft p => rewrite p add-head
+          | byRight p => add-tail $ add-tail p
+        }
+      }
+  }
 
 -- 2. Докажите, что множество подмножеств является инстансом SetSpec
 
-\func subsets {A : \Set} : SetSpec {A} (A -> \Prop)
-  => {?}
+\func subsets {A : \Set} : SetSpec {A} (A -> \Prop) \cowith
+  | empty => \lam _ => Empty
+  | add => \lam a s a' => Or (a' = a) (s a')
+  | isElem => \lam a s => s a
+  | setExt => \lam x => ext (\lam a => ext $ x a)
+  | add-head => byLeft idp
+  | add-tail => byRight
+  | empty-univ => \lam x => x
+  | add-univ => \lam x => x
+
 
 -- 3. Докажите, что множество подмножеств является наибольшим инстансом, то есть любой другой вкладывается в него.
 
-\func subsets-largest (S : SetSpec) : \Sigma (f : S -> (S.A -> \Prop)) (isInj f)
-  => {?}
+\func subsets-largest (S : SetSpec) : \Sigma (f : S -> (S.A -> \Prop)) (isInj f) =>
+  (\lam s a => isElem a s, \lam x y p => setExt (\lam a => eq-is-equiv $ pmap (`$ a) p))
+  \where {
+    \func eq-is-equiv {A B : \Type} (p : A = B) : A <-> B \elim p
+      | idp => (\lam x => x, \lam x => x)
+  }
 
 -- 4. Определите функцию isEmpty для произвольного конечного множества и для ListSet.
 
-\func isEmptySet {S : FinSetSpec} (x : S) : Bool => {?}
+\func fromList {S : FinSetSpec} (x : ListSet S.A) : S => transport (\lam X => X) listSet=Set x
 
-\func isEmptyListSet {A : \Set} (x : ListSet A) : Bool => {?}
+\func toList {S : FinSetSpec} (x : S) : ListSet S.A => transport (\lam X => X) (sym listSet=Set) x
+
+\func isEmpty {S : FinSetSpec} (x : S) : Bool => isEmptyListSet (toList x)
+
+\func isEmptyListSet {A : \Set} (x : ListSet A) : Bool \elim x
+  | in~ nil => true
+  | in~ (_ :: _) => false
+  | equals~ {nil} {nil} r => idp
+  | equals~ {_ :: _} {_ :: _} r => idp
+  | equals~ {nil} {x :: _} r => \case (r x).2 (here idp)
+  | equals~ {x :: _} {nil} r => \case (r x).1 (here idp)
 
 -- 5. Определите функцию union {A : \Set} : S -> S -> S для произвольного S (удовлетворяющего FinSetSpec) и для ListSet.
 
+\lemma idp-eq {A : \Set} (xs : List A) : EqList xs xs => \lam x => (\lam i => i, \lam i => i)
+
+\lemma eq-sym {A : \Set} {ys ys' : List A} (e : EqList ys ys') : EqList ys' ys =>
+  \lam x => \let (p, q) => e x \in (q, p)
+
+\func union {S : FinSetSpec} (a b : S) : S => fromList (unionList (toList a) (toList b))
+
+\func unionList {A : \Set} (xs ys : ListSet A) : ListSet A \elim xs, ys
+  | in~ xs, in~ ys => in~ (xs ++ ys)
+  | in~ xs, equals~ r i => equals~ (eq-sum (idp-eq xs) r) i
+  | equals~ r i, in~ ys => equals~ (eq-sum r (idp-eq ys)) i
+  \where {
+    \lemma in-sum (xs ys : List A) (a : A) : In a (xs ++ ys) <-> In a xs `Or` In a ys \elim xs
+      | nil => (byRight, \case __ \with {
+        | byLeft ()
+        | byRight i => i
+      })
+      | x :: xs => (\case __ \with {
+        | here p => byLeft (here p)
+        | there i => \case (in-sum xs ys a).1 i \with {
+          | byLeft i' => byLeft (there i')
+          | byRight i' => byRight i'
+        }
+      }, \case __ \with {
+        | byLeft i => \case i \with {
+          | here p => here p
+          | there i' => there ((in-sum xs ys a).2 (byLeft i'))
+        }
+        | byRight i => there ((in-sum xs ys a).2 (byRight i))
+      })
+
+    \lemma sum-trans {xs ys xs' ys' : List A} (p : EqList xs xs') (q : EqList ys ys') (a : A) (i : In a xs `Or` In a ys) : In a xs' `Or` In a ys' \elim i
+      | byLeft i => byLeft ((p a).1 i)
+      | byRight i => byRight ((q a).1 i)
+
+    \lemma eq-sum {xs ys xs' ys' : List A} (p : EqList xs xs') (q : EqList ys ys') : EqList (xs ++ ys) (xs' ++ ys') =>
+      \lam a =>
+          \let
+            | (f, g) => in-sum xs ys a
+            | (f', g') => in-sum xs' ys' a
+          \in (\lam i => g' (sum-trans p q a $ f i), \lam i => g (sum-trans (eq-sym p) (eq-sym q) a $ f' i))
+  }
+
 -- 6. Определите функцию intersection {A : DecSet} : S -> S -> S для произвольного S (удовлетворяющего FinSetSpec) и для ListSet.
+
+\func decide-in {A : DecSet} (x : A) (ys : List A) : Dec (In x ys) \elim ys
+  | nil => no \case __
+  | y :: ys => \case decideEq x y \with {
+    | yes e => yes (here e)
+    | no n => \case decide-in x ys \with {
+      | yes e => yes (there e)
+      | no q => no \case __ \with {
+        | here i => n i
+        | there i => q i
+      }
+    }
+  }
+
+\func intersection {A : DecSet} {S : FinSetSpec {A}} (a b : S) : S => fromList (intersectionList (toList a) (toList b))
+
+\func intersectionList {A : DecSet} (xs ys : ListSet A) : ListSet A \elim xs, ys
+  | in~ xs, in~ ys => in~ (intersect xs ys)
+  | in~ xs, equals~ r i => equals~ (eq (idp-eq xs) r) i
+  | equals~ r i, in~ ys => equals~ (eq r (idp-eq ys)) i
+  \where {
+    \func intersect (xs ys : List A) : List A \elim xs
+      | nil => nil
+      | x :: xs => \case decide-in x ys \with {
+        | yes e => x :: intersect xs ys
+        | no n => intersect xs ys
+      }
+
+    \lemma intersect-nil (xs : List A) : intersect xs nil = nil \elim xs
+      | nil => idp
+      | x :: xs => intersect-nil xs
+
+    \lemma intersect-in {xs ys : List A} {a : A} : In a (intersect xs ys) <-> (\Sigma (In a xs) (In a ys)) \elim xs
+      | nil => ((\case __), \lam (p, _) => \case p)
+      | x :: xs => mcases \with {
+        | yes e => (\case __ \with {
+          | here i => (here i, rewrite i e)
+          | there i => \let (p, q) => intersect-in.1 i \in (there p, q)
+        }, \lam (p, q) => \case p \with {
+          | here i => here i
+          | there i => there (intersect-in.2 (i, q))
+        })
+        | no n => (\lam i => \let (p, q) => intersect-in.1 i \in (there p, q), \lam (p, q) => \case p \with {
+          | here i => \case n $ rewriteF i q
+          | there i => intersect-in.2 (i, q)
+        })
+      }
+
+    \lemma eq-part {xs xs' : List A} {ys ys' : List A} (p : EqList xs xs') (q : EqList ys ys') (a : A) (i : In a (intersect xs ys)) : In a (intersect xs' ys') =>
+      \let (f, g) => intersect-in.1 i \in intersect-in.2 ((p a).1 f, (q a).1 g)
+
+    \lemma eq {xs xs' : List A} {ys ys' : List A} (p : EqList xs xs') (q : EqList ys ys') : EqList (intersect xs ys) (intersect xs' ys') =>
+      \lam x => (eq-part p q x, eq-part (eq-sym p) (eq-sym q) x)
+  }
 
 -- 7. Мы не можем определить функция size в общем случае, но мы можем определить предикат S -> Nat -> \Prop, соответствующий \lam xs n => size xs <= n.
 --    Задайте этот предикат и докажите, что он эквивалентен обычному определению, если A -- разрешимо и S -- конечно.
@@ -36,5 +178,115 @@
 -- Optional
 -- 8. Определите предикат isFin : \Type -> \Prop так, чтобы множество \Sigma (P : A -> \Prop) (isFin (\Sigma (a : A) (P a))) удовлетворяло FinSetSpec, определите этот инстанс.
 
+\func isFin (A : \Type) => ∃ (as : List A) (\Pi (a : A) -> In a as)
+
+\func finPred (A : \Type) => \Sigma (P : A -> \Prop) (isFin (\Sigma (a : A) (P a)))
+
+\instance FinPredSet {A : \Set} : FinSetSpec {A} (finPred A)
+  | empty => (\lam _ => Empty, inP (nil, \lam a => \case a.2))
+  | add => \lam a s => (\lam x => Or (x = a) (s.1 x), \case s.2 \with {
+    | inP (as, p) => inP ((a, byLeft idp) :: map (upgrade a) as, \case \elim __ \with {
+      | (a', byLeft q') => here $ ext q'
+      | (a', byRight q') => there $ map-in (upgrade a) (p (a', q'))
+    })
+  })
+  | isElem => \lam a (s, _) => s a
+  | setExt => \lam p => ext $ ext (\lam a => ext (p a))
+  | add-head => byLeft idp
+  | add-tail => byRight
+  | empty-univ => \lam i => i
+  | add-univ => \lam i => i
+  | set-fin => \case \elim __ \with {
+    | (p, f) => \case \elim f \with {
+      | inP (as, q) => inP (_, \lam x => (\lam p' => map-in (\lam x => x.1) (q (x, p')), \lam i => \case map-in' (\lam x => x.1) i \with {
+        | inP ((x', k), p', q') => rewriteI q' k
+      }))
+    }
+  } \where {
+  \func map {A B : \Type} (f : A -> B) (xs : List A) : List B \elim xs
+    | nil => nil
+    | x :: xs => f x :: map f xs
+
+  \func map-in {A B : \Type} (f : A -> B) {x : A} {xs : List A} (i : In x xs) : In (f x) (map f xs) \elim xs, i
+    | x' :: xs, here idp => here idp
+    | x' :: xs, there i => there $ map-in f i
+
+  \func map-in' {A B : \Type} (f : A -> B) {y : B} {xs : List A} (i : In y (map f xs)) : ∃ (x : A) (In x xs) (f x = y) \elim xs, i
+    | x :: xs, here p => inP (x, here idp, sym p)
+    | x :: xs, there i => \case map-in' f i \with {
+      | inP (x', p, q) => inP (x', there p, q)
+    }
+
+  \func upgrade {A : \Set} {P : A -> \Prop} (a : A) (p : \Sigma (x : A) (P x)) : \Sigma (x : A) (Or (x = a) (P x)) \elim p
+    | (x,p) => (x, byRight p)
+}
 -- Optional
 -- 9. Определите NubListSet и инстанс FinSetSpec для него.
+
+\func isNub {A : \Type} (xs : List A) : \Prop \elim xs
+  | nil => \Sigma
+  | x :: xs => \Sigma (Logic.Not (In x xs)) (isNub xs)
+
+\func NubList (A : \Type) => \Sigma (xs : List A) (isNub xs)
+
+\func NubListSet (A : \Set) => Quotient (NubList A) (\lam (xs, _) (ys, _) => EqList xs ys)
+
+\instance NubListSetSet {A : DecSet} : FinSetSpec {A} (NubListSet A)
+  | empty => in~ (nil, ())
+  | add => \lam x s => \case s \with {
+    | in~ s => in~ $ nub-add x s
+    | equals~ {s} {s'} r i => equals~ (\lam x' => (nub-add-eq r x x', nub-add-eq (eq-sym r) x x')) i
+  }
+  | isElem => \lam x s => \case s \with {
+    | in~ (xs, _) => In x xs
+    | equals~ r => ext (r x)
+  }
+  | setExt {s} {s'} => \lam c => cases (s arg addPath, s' arg addPath) \with {
+    | in~ (xs, n), p, in~ (ys, n'), q => path (equals~ (\lam x => rewriteF (p, q) $ c x))
+  }
+  | add-head {x} {s} => \case \elim s \with {
+    | in~ (xs, _) => mcases \with {
+      | yes e => e
+      | no _ => here idp
+    }
+  }
+  | add-tail {a} {x} {s} => \case \elim s \with {
+    | in~ (xs, n) => \lam i => mcases \with {
+      | yes _ => i
+      | no _ => there i
+    }
+  }
+  | empty-univ => \case __
+  | add-univ {a} {x} {s} => \case \elim s \with {
+    | in~ (xs, n) => mcases \with {
+      | yes e => byRight
+      | no n' => \case __ \with {
+        | here p => byLeft p
+        | there i => byRight i
+      }
+    }
+  }
+  | set-fin => \case \elim __ \with {
+    | in~ (xs, _) => inP (xs, \lam x => (\lam i => i, \lam i => i))
+  }
+  \where {
+    \func nub-add {A : DecSet} (x : A) (s : NubList A) : NubList A \elim s
+      | (xs, n) => \case decide-in x xs \with {
+        | yes _ => (xs, n)
+        | no n' => (x :: xs, (n', n))
+      }
+
+    \func nub-add-eq {A : DecSet} {xs ys : NubList A} (e : EqList xs.1 ys.1) (x x' : A) (i : In x' (nub-add x xs).1) : In x' (nub-add x ys).1 \elim xs, ys
+      | (xs, n), (ys, n') => cases (decide-in x xs arg addPath, decide-in x ys) \with {
+        | yes p, l, yes q => (e x').1 $ rewriteF l i
+        | no p, l, no q => \case decideEq x' x \with {
+          | yes k => here k
+          | no p' => \case rewriteF l i \with {
+            | there q' => there $ (e x').1 q'
+            | here q' => \case p' q'
+          }
+        }
+        | yes p, _, no q => \case q ((e x).1 p)
+        | no p, _, yes q => \case p ((e x).2 q)
+      }
+  }

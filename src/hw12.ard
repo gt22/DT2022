@@ -19,11 +19,9 @@
 
 \func \infixl 6 + (x y : Int) : Int
   | pos n, pos m => pos (n Nat.+ m)
-  | neg (suc n), neg (suc m) => neg (suc $ suc $ n Nat.+ m)
-  | 0, neg m => neg m
-  | neg n, 0 => neg n
-  | pos (suc n), neg (suc m) => pos n + neg m
-  | neg (suc n), pos (suc m) => neg n + suc m
+  | neg n, neg m => neg (n Nat.+ m)
+  | pos n, neg m => n Nat.- m
+  | neg n, pos m => m Nat.- n
 
 \func \infixl 7 * (x y : Int) : Int
   | pos n, pos m => pos (n Nat.* m)
